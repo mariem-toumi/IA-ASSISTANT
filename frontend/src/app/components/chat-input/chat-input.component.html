@@ -1,0 +1,31 @@
+<div class="input-zone">
+
+  <div class="suggestions" *ngIf="showSuggestions">
+    <button
+      type="button"
+      class="suggestion"
+      *ngFor="let s of suggestions"
+      (click)="useSuggestion(s.prompt)"
+    >{{ s.label }}</button>
+  </div>
+
+  <div class="bar">
+    <input
+      type="text"
+      class="bar__input"
+      placeholder="Posez une question, je vérifie sur le web en direct…"
+      [(ngModel)]="value"
+      (keydown)="onKeydown($event)"
+      [disabled]="disabled"
+      aria-label="Votre question"
+    />
+    <app-orb
+      size="button"
+      [interactive]="true"
+      [status]="disabled ? 'searching' : 'idle'"
+      (activate)="submit()"
+    ></app-orb>
+  </div>
+
+  <p class="hint">Live vérifie ses réponses avec plusieurs sources avant de répondre.</p>
+</div>

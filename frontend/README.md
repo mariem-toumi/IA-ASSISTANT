@@ -1,70 +1,60 @@
-# Live — Frontend de l'assistant IA vérifié
+# Live — Frontend Angular
 
-Interface web (HTML / CSS / JS pur, aucune installation requise) connectée à ton backend Flask (`/api/chat/stream`).
+Interface Angular 18 (standalone components) pour le Live AI Assistant : agent + recherche web + vérification de sources, avec streaming en direct (SSE).
 
-## Aperçu du design
+## Design
 
-- **Orbe animée** (dégradé violet / bleu ciel / rose) : change de comportement selon l'état de l'agent
-  — pulsation douce au repos, anneau de "scan" rotatif pendant la recherche web, pulsation plus rapide pendant la génération.
-- **Cartes de sources** sous chaque réponse : nom de domaine, titre, lien cliquable — la "trace de vérification" visuelle du projet.
-- **Badge de confiance** coloré (vert = haute / orange = moyenne / rouge = faible / gris = connaissance générale).
-- **Streaming token par token** via lecture manuelle du flux SSE (`fetch` + `ReadableStream`), pas de librairie externe.
+Palette "aurore sur encre" : fond quasi noir indigo (`#0a0a12`), avec un dégradé violet → turquoise → rose réservé à l'orbe et aux halos de vérification — c'est l'élément signature de l'interface, il change d'état visuellement pendant la recherche, la génération, et la vérification des sources.
 
-## Lancer le frontend
+- Display : **Fraunces** (serif variable, pour le titre d'accueil)
+- Corps : **Manrope**
+- Données/citations : **IBM Plex Mono** (URLs, badges de confiance, session id)
 
-Deux façons de faire, au choix :
+## Installation
 
-### Option A — Ouvrir directement le fichier
-Double-clique sur `index.html`. Ça fonctionne dans la plupart des cas grâce à `flask-cors`, mais certains navigateurs bloquent les requêtes `fetch` depuis un fichier local (`file://`). Si tu vois "Serveur hors ligne" alors que ton backend tourne, passe à l'option B.
-
-### Option B — Servir via un petit serveur local (recommandé)
-Dans le dossier `frontend/` :
-
-```powershell
-python -m http.server 5500
+```bash
+npm install
 ```
 
-Puis ouvre **http://localhost:5500** dans ton navigateur.
+## Configuration du backend
 
-(Ou utilise l'extension **Live Server** de VS Code : clic droit sur `index.html` → "Open with Live Server".)
+Le fichier `src/environments/environment.ts` pointe par défaut sur :
 
-## Connexion au backend
-
-Le frontend appelle par défaut :
-```
-http://localhost:5001
+```ts
+apiBaseUrl: 'http://localhost:5001'
 ```
 
-Si ton backend Flask tourne sur un autre port, modifie cette ligne tout en haut de `js/app.js` :
+Adapte cette valeur si ton backend Flask tourne sur un autre port (vérifie `PORT` dans `config.py` côté backend).
 
-```js
-const API_BASE = "http://localhost:5001";
+## Lancer en développement
+
+```bash
+npm start
 ```
 
-⚠️ Assure-toi que ton serveur Flask (`python app.py`) tourne **avant** d'ouvrir le frontend.
+Puis ouvre `http://localhost:4200`. Assure-toi que le backend Flask (`python app.py`) tourne en parallèle.
 
-## Structure du projet
+## Build de production
 
-```
-frontend/
-├── index.html      # structure de la page
-├── css/
-│   └── style.css   # design system (couleurs, typographie, animations)
-├── js/
-│   └── app.js       # logique : appel SSE, rendu des messages, états de l'orbe
-└── README.md
+```bash
+npm run build
 ```
 
-## Personnalisation rapide
+Les fichiers sont générés dans `dist/live-ai-assistant`.
 
-- **Couleurs** : toutes les variables sont en haut de `css/style.css`, dans `:root` (ex: `--violet`, `--sky`, `--pink`, `--teal`).
-- **Suggestions de questions** : modifie les boutons `.chip` dans `index.html` (section `<div class="chips">`).
-- **Nom affiché** : remplace "Mariouma" dans `index.html` (`<h1>Bonjour, <span class="accent">Mariouma</span></h1>`).
+## Structure
 
-## Intégration future dans Angular
-
-Cette version vanilla JS est pensée pour être testée immédiatement. Si tu veux la porter dans ton projet Angular (ToumiSmart-style) plus tard, la logique importante à reprendre est dans `js/app.js` :
-- la fonction `streamChat()` (lecture du flux SSE)
-- la fonction `handleEvent()` (dispatch des événements `session` / `status` / `sources` / `token` / `done` / `error`)
-
-Le CSS peut être repris quasiment tel quel dans un composant Angular (styles scoped).
+```
+src/app/
+├── components/
+│   ├── orb/              → élément signature animé (repos / recherche / génération / vérifié)
+│   ├── message-bubble/   → bulle de message + badge de confiance
+│   ├── source-chip/      → vignette de source vérifiée (cliquable)
+│   ├── chat-input/       → barre de saisie + suggestions
+│   └── sidebar/          → branding, nouvelle conversation, statut backend
+├── services/
+│   └── chat.service.ts   → connexion SSE à /api/chat/stream (fetch + ReadableStream)
+├── models/
+│   └── message.model.ts
+└── app.component.*       → orchestration de l'état de la conversation
+```

@@ -1,0 +1,125 @@
+/* ==========================================================================
+   Live — design tokens
+   Palette: aurora-on-ink. A near-black indigo canvas with a violet → teal →
+   pink gradient that only ever lives inside the orb and verification glows.
+   Everything else stays quiet so the orb reads as the signature.
+   ========================================================================== */
+
+:root {
+  /* --- surfaces --- */
+  --bg: #0a0a12;
+  --bg-elevated: #101018;
+  --glass: rgba(255, 255, 255, 0.045);
+  --glass-strong: rgba(255, 255, 255, 0.07);
+  --glass-border: rgba(255, 255, 255, 0.09);
+  --glass-border-strong: rgba(255, 255, 255, 0.16);
+
+  /* --- aurora gradient (the orb's only home) --- */
+  --aurora-violet: #7c6ff0;
+  --aurora-teal: #4fd1c5;
+  --aurora-pink: #f0a6cd;
+  --aurora-gradient: linear-gradient(135deg, var(--aurora-violet) 0%, #9d8cf5 32%, var(--aurora-teal) 68%, var(--aurora-pink) 100%);
+
+  /* --- text --- */
+  --text: #f3f1fb;
+  --text-muted: #948fb0;
+  --text-faint: #5f5b78;
+
+  /* --- semantic accents (sparing use only) --- */
+  --verified: #34d399;
+  --verified-glow: rgba(52, 211, 153, 0.35);
+  --caution: #f0b860;
+  --error: #ef7a72;
+
+  /* --- type --- */
+  --font-display: "Fraunces", "Iowan Old Style", serif;
+  --font-body: "Manrope", -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+
+  /* --- shape --- */
+  --radius-lg: 28px;
+  --radius-md: 18px;
+  --radius-sm: 12px;
+
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+
+/* Ambient aurora glow fixed behind the whole app — very low opacity, static
+   position, so it reads as atmosphere rather than a background image. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(60% 45% at 18% 8%, rgba(124, 111, 240, 0.16), transparent 60%),
+    radial-gradient(50% 40% at 88% 18%, rgba(79, 209, 197, 0.11), transparent 60%),
+    radial-gradient(55% 45% at 50% 100%, rgba(240, 166, 205, 0.08), transparent 60%);
+}
+
+h1, h2, h3, h4 {
+  font-family: var(--font-display);
+  font-weight: 500;
+  margin: 0;
+  letter-spacing: -0.01em;
+}
+
+p {
+  margin: 0;
+}
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+}
+
+::selection {
+  background: rgba(124, 111, 240, 0.35);
+}
+
+/* Scrollbar — thin, quiet */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.14) transparent;
+}
+*::-webkit-scrollbar {
+  width: 6px;
+}
+*::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+}
+
+/* Visible keyboard focus everywhere */
+:focus-visible {
+  outline: 2px solid var(--aurora-teal);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}

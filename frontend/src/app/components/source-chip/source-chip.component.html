@@ -1,0 +1,12 @@
+<a class="chip" [href]="source.url" target="_blank" rel="noopener noreferrer" [title]="source.title">
+  <span class="chip__mark">{{ initial }}</span>
+  <span class="chip__body">
+    <span class="chip__title">{{ source.title }}</span>
+    <span class="chip__domain">
+      <svg viewBox="0 0 16 16" width="10" height="10" fill="none" aria-hidden="true">
+        <path d="M2 8.2 6.4 12.6 14 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      {{ domain }}
+    </span>
+  </span>
+</a>

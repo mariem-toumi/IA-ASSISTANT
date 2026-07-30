@@ -1,0 +1,35 @@
+<div class="shell">
+  <app-sidebar
+    [sessionId]="sessionId"
+    [backendOnline]="backendOnline"
+    (newConversation)="newConversation()"
+  ></app-sidebar>
+
+  <main class="main">
+
+    <!-- État vide : hero avec l'orbe -->
+    <section class="hero" *ngIf="messages.length === 0">
+      <app-orb size="hero" status="idle"></app-orb>
+      <h1 class="hero__title">Bonjour. <span>Que veux-tu vérifier aujourd'hui ?</span></h1>
+      <p class="hero__subtitle">Je cherche sur le web, je croise les sources, et je vous dis quand je ne suis pas sûr.</p>
+
+      <div class="hero__input">
+        <app-chat-input [disabled]="isStreaming" [showSuggestions]="true" (send)="onSend($event)"></app-chat-input>
+      </div>
+    </section>
+
+    <!-- Fil de conversation -->
+    <ng-container *ngIf="messages.length > 0">
+      <div class="thread" #scrollArea>
+        <div class="thread__inner">
+          <app-message-bubble *ngFor="let m of messages" [message]="m"></app-message-bubble>
+        </div>
+      </div>
+
+      <div class="dock">
+        <app-chat-input [disabled]="isStreaming" [showSuggestions]="false" (send)="onSend($event)"></app-chat-input>
+      </div>
+    </ng-container>
+
+  </main>
+</div>

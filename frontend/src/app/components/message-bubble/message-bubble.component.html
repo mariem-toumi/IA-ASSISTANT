@@ -1,0 +1,30 @@
+<div class="row" [class.row--user]="message.role === 'user'">
+  <div class="bubble" [class.bubble--user]="message.role === 'user'" [class.bubble--assistant]="message.role === 'assistant'">
+
+    <div class="bubble__status" *ngIf="message.role === 'assistant' && (message.status === 'searching' || message.status === 'generating')">
+      <span class="dot"></span>{{ message.statusLabel }}
+    </div>
+
+    <p class="bubble__text">{{ message.text }}<span class="caret" *ngIf="message.status === 'generating'"></span></p>
+
+    <div class="bubble__sources" *ngIf="message.sources?.length">
+      <span class="bubble__sources-label">Sources vérifiées</span>
+      <div class="bubble__sources-list">
+        <app-source-chip *ngFor="let s of message.sources" [source]="s"></app-source-chip>
+      </div>
+    </div>
+
+    <div class="bubble__footer" *ngIf="message.role === 'assistant' && message.status === 'done' && confidenceLabel">
+      <span class="badge" [ngClass]="confidenceClass">
+        <span class="badge__dot"></span>{{ confidenceLabel }}
+      </span>
+    </div>
+
+    <div class="bubble__footer" *ngIf="message.status === 'error'">
+      <span class="badge is-low">
+        <span class="badge__dot"></span>Erreur technique
+      </span>
+    </div>
+
+  </div>
+</div>

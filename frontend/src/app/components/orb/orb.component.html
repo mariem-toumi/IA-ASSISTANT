@@ -1,0 +1,21 @@
+<button
+  type="button"
+  class="orb"
+  [class.orb--hero]="size === 'hero'"
+  [class.orb--button]="size === 'button'"
+  [class.orb--searching]="status === 'searching'"
+  [class.orb--generating]="status === 'generating'"
+  [class.orb--done]="status === 'done'"
+  [class.orb--error]="status === 'error'"
+  [class.orb--interactive]="interactive"
+  [disabled]="!interactive"
+  [attr.aria-label]="interactive ? 'Envoyer votre question' : 'Assistant Live'"
+  (click)="onClick()"
+>
+  <span class="orb__core"></span>
+  <span class="orb__ring orb__ring--scan" *ngIf="status === 'searching'"></span>
+  <span class="orb__ring orb__ring--verified" *ngIf="status === 'done'"></span>
+  <svg *ngIf="size === 'button' && interactive" class="orb__icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+    <path d="M5 12h13M13 6l6 6-6 6" stroke="white" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+  </svg>
+</button>
