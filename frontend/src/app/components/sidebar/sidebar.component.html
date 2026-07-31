@@ -17,12 +17,54 @@
 
   <p class="tagline">Assistant IA qui cherche, croise et cite ses sources en temps réel.</p>
 
-  <button type="button" class="new-chat" (click)="newConversation.emit()">
+  <button type="button" class="new-chat" (click)="onNewConversation()">
     <svg viewBox="0 0 16 16" width="14" height="14" fill="none" aria-hidden="true">
       <path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
     </svg>
     Nouvelle conversation
   </button>
+
+  <div class="search">
+    <svg class="search__icon" viewBox="0 0 16 16" width="13" height="13" fill="none" aria-hidden="true">
+      <circle cx="7" cy="7" r="5" stroke="currentColor" stroke-width="1.4"/>
+      <path d="M11 11l3.5 3.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+    </svg>
+    <input
+      type="text"
+      class="search__input"
+      placeholder="Rechercher dans l'historique…"
+      [(ngModel)]="searchQuery"
+      (ngModelChange)="onSearchInput()"
+    />
+    <button type="button" class="search__clear" *ngIf="searchQuery" (click)="clearSearch()" aria-label="Effacer la recherche">
+      <svg viewBox="0 0 16 16" width="11" height="11" fill="none" aria-hidden="true">
+        <path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+      </svg>
+    </button>
+  </div>
+
+  <div class="history">
+    <span class="history__label" *ngIf="!searchResults">Historique</span>
+    <span class="history__label" *ngIf="searchResults">
+      {{ isSearching ? 'Recherche…' : (searchResults.length + ' résultat' + (searchResults.length > 1 ? 's' : '')) }}
+    </span>
+
+    <div class="history__empty" *ngIf="!isLoading && displayedList.length === 0">
+      {{ searchResults ? 'Aucune conversation ne correspond.' : 'Aucune conversation pour le moment.' }}
+    </div>
+
+    <button
+      type="button"
+      class="history__item"
+      *ngFor="let c of displayedList"
+      [class.is-active]="c.session_id === activeSessionId"
+      (click)="onSelect(c.session_id)"
+    >
+      <span class="history__title">{{ c.title }}</span>
+      <span class="history__snippet" *ngIf="c.snippet">{{ c.snippet }}</span>
+      <span class="history__time">{{ relativeTime(c.updated_at) }}</span>
+    </button>
+  </div>
 
   <div class="spacer"></div>
 

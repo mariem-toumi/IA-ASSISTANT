@@ -13,3 +13,5 @@ frontend/.angular/
 .vscode/
 *.log
 body*.json
+backend/data/
+backend/data/

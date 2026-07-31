@@ -26,6 +26,10 @@ export class AppComponent implements OnInit, AfterViewChecked {
   sessionId: string | null = null;
   backendOnline: boolean | null = null;
   isStreaming = false;
+  isLoadingConversation = false;
+
+  /** Change de valeur à chaque échange terminé -> la sidebar recharge sa liste. */
+  historyVersion = 0;
 
   private shouldScroll = false;
 
@@ -54,6 +58,27 @@ export class AppComponent implements OnInit, AfterViewChecked {
   newConversation(): void {
     this.messages = [];
     this.sessionId = null;
+  }
+
+  /** Recharge une conversation passée depuis l'historique (sidebar). */
+  async loadConversation(sessionId: string): Promise<void> {
+    if (sessionId === this.sessionId) return;
+
+    this.isLoadingConversation = true;
+    const pastMessages = await this.chat.getConversationMessages(sessionId);
+    this.isLoadingConversation = false;
+
+    if (pastMessages.length === 0) return;
+
+    this.sessionId = sessionId;
+    this.messages = pastMessages.map((m) => ({
+      id: uid(),
+      role: m.role,
+      text: m.content,
+      status: 'done',
+      sources: []
+    }));
+    this.scrollToBottom();
   }
 
   async onSend(text: string): Promise<void> {
@@ -111,6 +136,7 @@ export class AppComponent implements OnInit, AfterViewChecked {
             status: 'done',
             statusLabel: undefined
           }));
+          this.historyVersion++;
         },
         onError: (message) => {
           patch((m) => ({

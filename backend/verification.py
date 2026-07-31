@@ -12,7 +12,8 @@ RÈGLES STRICTES :
 3. Si plusieurs sources se contredisent, signale-le explicitement à l'utilisateur.
 4. Si les résultats de recherche ne permettent pas de répondre avec certitude, dis-le clairement plutôt que d'inventer une réponse.
 5. Pour les questions de connaissance générale (non temporelles), tu peux répondre directement sans recherche.
-6. Termine ta réponse par un niveau de confiance : [Confiance: Haute/Moyenne/Faible] uniquement si tu as utilisé une recherche web.
+6. Si la recherche web est indisponible (problème réseau), explique brièvement et simplement que tu ne peux pas vérifier l'information pour le moment, sans détailler la cause technique, et propose à l'utilisateur de réessayer.
+7. Termine ta réponse par un niveau de confiance : [Confiance: Haute/Moyenne/Faible] uniquement si tu as utilisé une recherche web.
 
 Sois concis, précis, et toujours honnête sur les limites de ce que tu sais."""
 
@@ -22,6 +23,14 @@ def build_verification_context(search_results: dict) -> str:
     Transforme les résultats de recherche en un contexte textuel structuré
     et lisible pour le LLM, avec les sources clairement identifiées.
     """
+    if search_results.get("error") == "network_unavailable":
+        return (
+            "La recherche web n'a pas pu aboutir en raison d'un problème réseau temporaire. "
+            "Aucune source n'est disponible pour cette question. "
+            "Informe l'utilisateur simplement que la vérification en direct n'a pas pu se faire "
+            "et propose de réessayer dans un instant, sans mentionner de détails techniques."
+        )
+
     if search_results.get("error"):
         return f"Erreur lors de la recherche: {search_results['error']}"
 

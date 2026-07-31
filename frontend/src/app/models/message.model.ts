@@ -9,6 +9,20 @@ export interface Source {
   score?: number;
 }
 
+export interface Conversation {
+  session_id: string;
+  title: string;
+  updated_at: string;
+  message_count?: number;
+  snippet?: string;
+}
+
+export interface ConversationMessage {
+  role: MessageRole;
+  content: string;
+  created_at: string;
+}
+
 export interface ChatMessage {
   id: string;
   role: MessageRole;

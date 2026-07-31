@@ -1,8 +1,11 @@
 <div class="shell">
   <app-sidebar
     [sessionId]="sessionId"
+    [activeSessionId]="sessionId"
     [backendOnline]="backendOnline"
+    [refreshTrigger]="historyVersion"
     (newConversation)="newConversation()"
+    (selectConversation)="loadConversation($event)"
   ></app-sidebar>
 
   <main class="main">

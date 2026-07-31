@@ -1,6 +1,6 @@
 import { Injectable } from '@angular/core';
 import { environment } from '../../environments/environment';
-import { Source } from '../models/message.model';
+import { Conversation, ConversationMessage, Source } from '../models/message.model';
 
 export interface StreamEvent {
   type: 'session' | 'status' | 'sources' | 'token' | 'done' | 'error';
@@ -66,6 +66,52 @@ export class ChatService {
           // fragment JSON incomplet ou malformé -> ignoré silencieusement
         }
       }
+    }
+  }
+
+  /** Liste les conversations passées, les plus récentes en premier. */
+  async getConversations(): Promise<Conversation[]> {
+    try {
+      const res = await fetch(`${this.baseUrl}/api/conversations`);
+      if (!res.ok) return [];
+      const data = await res.json();
+      return data.conversations ?? [];
+    } catch {
+      return [];
+    }
+  }
+
+  /** Recherche par mot-clé dans les titres et le contenu des conversations. */
+  async searchConversations(query: string): Promise<Conversation[]> {
+    try {
+      const res = await fetch(`${this.baseUrl}/api/conversations/search?q=${encodeURIComponent(query)}`);
+      if (!res.ok) return [];
+      const data = await res.json();
+      return data.results ?? [];
+    } catch {
+      return [];
+    }
+  }
+
+  /** Récupère tous les messages d'une conversation pour la recharger dans le fil. */
+  async getConversationMessages(sessionId: string): Promise<ConversationMessage[]> {
+    try {
+      const res = await fetch(`${this.baseUrl}/api/conversations/${sessionId}`);
+      if (!res.ok) return [];
+      const data = await res.json();
+      return data.messages ?? [];
+    } catch {
+      return [];
+    }
+  }
+
+  /** Supprime définitivement une conversation. */
+  async deleteConversation(sessionId: string): Promise<boolean> {
+    try {
+      const res = await fetch(`${this.baseUrl}/api/conversations/${sessionId}`, { method: 'DELETE' });
+      return res.ok;
+    } catch {
+      return false;
     }
   }
 

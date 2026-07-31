@@ -1,14 +1,15 @@
 """
 Cœur de l'agent : boucle de tool calling avec Groq.
 Gère l'appel au LLM, l'exécution des outils demandés,
-et la synthèse de la réponse finale avec vérification.
+la synthèse de la réponse finale avec vérification,
+et un filet de sécurité si le modèle échoue à générer un tool call proprement.
 """
 import json
 import logging
 from groq import Groq
 
 from config import Config
-from tools import TOOLS_DEFINITION, AVAILABLE_TOOLS
+from tools import TOOLS_DEFINITION, AVAILABLE_TOOLS, search_web
 from verification import VERIFICATION_SYSTEM_PROMPT, build_verification_context, check_source_agreement
 
 logger = logging.getLogger(__name__)
@@ -20,8 +21,8 @@ def _call_groq_with_retry(messages, tools=None, tool_choice=None, max_attempts=2
     """
     Appelle Groq avec retry automatique en cas d'échec de génération
     (bug connu: le modèle peut mal formater un tool_call, notamment
-    quand la requête contient des caractères spéciaux comme des apostrophes).
-    Au 2e essai, la température est abaissée pour stabiliser la sortie.
+    quand la requête contient des caractères spéciaux comme des apostrophes
+    ou des accents). Au 2e essai, la température est abaissée pour stabiliser.
     """
     last_error = None
 
@@ -46,12 +47,63 @@ def _call_groq_with_retry(messages, tools=None, tool_choice=None, max_attempts=2
     return None, last_error
 
 
+def _fallback_direct_search(user_message: str) -> dict:
+    """
+    Filet de sécurité : si le modèle échoue à générer un tool_call proprement
+    (erreur tool_use_failed persistante), on exécute nous-mêmes une recherche
+    web sur la question brute, sans passer par la décision du modèle.
+    """
+    logger.info("Fallback: recherche web directe (contournement du tool calling)")
+    return search_web(user_message)
+
+
+def _synthesize_from_context(user_message: str, history: list, search_result: dict, stream: bool = False):
+    """
+    Demande au modèle de rédiger la réponse finale à partir d'un contexte
+    de recherche déjà obtenu, SANS lui redonner la possibilité d'appeler un outil.
+    Cela évite de retomber dans le même bug de génération de tool_call.
+    """
+    verification_context = build_verification_context(search_result)
+
+    messages = (
+        [{"role": "system", "content": VERIFICATION_SYSTEM_PROMPT}]
+        + history
+        + [
+            {"role": "user", "content": user_message},
+            {
+                "role": "system",
+                "content": (
+                    "Voici des résultats de recherche web récents pour répondre à la question "
+                    f"ci-dessus:\n\n{verification_context}\n\n"
+                    "Rédige ta réponse UNIQUEMENT à partir de ces résultats, en citant tes sources."
+                )
+            }
+        ]
+    )
+
+    if not stream:
+        response = client.chat.completions.create(
+            model=Config.SYNTHESIS_MODEL,
+            messages=messages,
+            temperature=0.3
+        )
+        return response.choices[0].message.content
+
+    return client.chat.completions.create(
+        model=Config.SYNTHESIS_MODEL,
+        messages=messages,
+        temperature=0.3,
+        stream=True
+    )
+
+
 def run_agent(user_message: str, history: list) -> dict:
     """
     Exécute la boucle agentique complète :
     1. Envoie la question + historique au LLM avec les outils disponibles
     2. Si le LLM demande un outil -> l'exécute -> renvoie le résultat au LLM
     3. Répète jusqu'à obtenir une réponse finale (ou limite d'itérations atteinte)
+    4. Si le tool calling échoue de façon persistante, bascule sur une recherche directe
 
     Retourne un dict avec la réponse finale ET les métadonnées (sources, confiance).
     """
@@ -70,18 +122,20 @@ def run_agent(user_message: str, history: list) -> dict:
         )
 
         if error is not None:
-            logger.error(f"Erreur API Groq après retry: {error}")
+            # Filet de sécurité : recherche directe + synthèse sans tool calling
+            logger.warning(f"Tool calling définitivement échoué, bascule en mode direct: {error}")
+            search_result = _fallback_direct_search(user_message)
+            sources_used = search_result.get("sources", [])
+            answer = _synthesize_from_context(user_message, history, search_result, stream=False)
             return {
-                "response": "Désolé, une erreur technique est survenue. Peux-tu reformuler ta question ?",
+                "response": answer,
                 "sources": sources_used,
-                "confidence": "unknown",
-                "error": str(error),
-                "tool_used": tool_was_used
+                "confidence": _estimate_confidence(sources_used),
+                "tool_used": True
             }
 
         msg = response.choices[0].message
 
-        # Cas 1 : le modèle ne demande pas d'outil -> réponse finale
         if not msg.tool_calls:
             return {
                 "response": msg.content,
@@ -90,7 +144,6 @@ def run_agent(user_message: str, history: list) -> dict:
                 "tool_used": tool_was_used
             }
 
-        # Cas 2 : le modèle demande d'exécuter un ou plusieurs outils
         tool_was_used = True
         messages.append({
             "role": "assistant",
@@ -114,24 +167,25 @@ def run_agent(user_message: str, history: list) -> dict:
 
             tool_function = AVAILABLE_TOOLS.get(tool_name)
 
-            if tool_function is None:
-                tool_result = {"error": f"Outil inconnu: {tool_name}"}
-            else:
-                tool_result = tool_function(**tool_args)
+            try:
+                tool_result = (
+                    tool_function(**tool_args) if tool_function
+                    else {"error": f"Outil inconnu: {tool_name}"}
+                )
+            except Exception as e:
+                logger.error(f"Erreur lors de l'exécution de l'outil {tool_name}: {e}")
+                tool_result = {"error": f"Erreur technique lors de l'exécution de {tool_name}: {str(e)}"}
 
-                # Collecte les sources pour les métadonnées de réponse
-                if tool_name == "search_web" and "sources" in tool_result:
-                    sources_used.extend(tool_result["sources"])
+            if tool_name == "search_web" and "sources" in tool_result:
+                sources_used.extend(tool_result["sources"])
 
             verification_context = build_verification_context(tool_result)
-
             messages.append({
                 "role": "tool",
                 "tool_call_id": tool_call.id,
                 "content": verification_context
             })
 
-    # Limite d'itérations atteinte sans réponse finale claire
     logger.warning("Limite d'itérations d'outils atteinte")
     return {
         "response": "Je n'ai pas pu obtenir une réponse fiable après plusieurs recherches. Peux-tu reformuler ta question ?",
@@ -169,6 +223,7 @@ def run_agent_stream(user_message: str, history: list):
 
     sources_used = []
     tool_was_used = False
+    fallback_triggered = False
 
     # --- Phase 1 : décider si un outil est nécessaire ---
     for iteration in range(Config.MAX_TOOL_ITERATIONS):
@@ -177,20 +232,47 @@ def run_agent_stream(user_message: str, history: list):
         )
 
         if error is not None:
-            logger.error(f"Erreur API Groq après retry: {error}")
-            yield {
-                "type": "error",
-                "data": "Le modèle a rencontré une difficulté technique. Réessaie ta question, éventuellement reformulée."
-            }
+            # Filet de sécurité : recherche directe, puis on streame la synthèse
+            logger.warning(f"Tool calling définitivement échoué, bascule en mode direct: {error}")
+            yield {"type": "status", "data": "Recherche directe en cours..."}
+
+            search_result = _fallback_direct_search(user_message)
+            sources_used = search_result.get("sources", [])
+            if sources_used:
+                yield {"type": "sources", "data": sources_used}
+
+            tool_was_used = True
+            fallback_triggered = True
+
+            yield {"type": "status", "data": "Génération de la réponse..."}
+            try:
+                stream = _synthesize_from_context(user_message, history, search_result, stream=True)
+                full_response = ""
+                for chunk in stream:
+                    delta = chunk.choices[0].delta.content
+                    if delta:
+                        full_response += delta
+                        yield {"type": "token", "data": delta}
+
+                yield {
+                    "type": "done",
+                    "data": {
+                        "response": full_response,
+                        "sources": sources_used,
+                        "confidence": _estimate_confidence(sources_used),
+                        "tool_used": True
+                    }
+                }
+            except Exception as e:
+                logger.error(f"Erreur lors de la synthèse de secours: {e}")
+                yield {"type": "error", "data": "Impossible de générer une réponse pour le moment."}
             return
 
         msg = response.choices[0].message
 
-        # Pas d'appel d'outil -> on peut streamer directement cette réponse
         if not msg.tool_calls:
             break
 
-        # Un outil est demandé
         tool_was_used = True
         yield {"type": "status", "data": "Recherche d'informations en cours..."}
 
@@ -236,8 +318,10 @@ def run_agent_stream(user_message: str, history: list):
                 "content": verification_context
             })
 
-        # On repart en boucle pour voir si le modèle veut une réponse finale ou un autre outil
         continue
+
+    if fallback_triggered:
+        return
 
     # --- Phase 2 : streamer la réponse finale token par token ---
     yield {"type": "status", "data": "Génération de la réponse..."}
