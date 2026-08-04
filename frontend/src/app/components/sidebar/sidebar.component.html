@@ -86,8 +86,8 @@
   <div class="status">
     <span class="status__row">
       <span class="status__dot" [class.is-online]="backendOnline === true" [class.is-offline]="backendOnline === false"></span>
-      {{ backendOnline === true ? 'Backend connecté' : backendOnline === false ? 'Backend hors ligne' : 'Connexion…' }}
+      {{ backendOnline === true ? '' : backendOnline === false ? 'Backend hors ligne' : 'Connexion…' }}
     </span>
-    <span class="status__session">session · {{ shortSession }}</span>
+    <span class="status__session">{{ shortSession }}</span>
   </div>
 </aside>
