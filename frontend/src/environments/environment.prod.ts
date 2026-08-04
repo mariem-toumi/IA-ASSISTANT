@@ -1,4 +1,4 @@
 export const environment = {
   production: true,
-  apiBaseUrl: 'https://your-backend-domain.example.com'
+  apiBaseUrl: 'https://ia-assistant-1jhd.onrender.com'
 };
