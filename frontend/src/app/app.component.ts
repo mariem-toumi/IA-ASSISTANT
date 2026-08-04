@@ -60,6 +60,12 @@ export class AppComponent implements OnInit, AfterViewChecked {
     this.sessionId = null;
   }
 
+  onConversationDeleted(deletedSessionId: string): void {
+    if (deletedSessionId === this.sessionId) {
+      this.newConversation();
+    }
+  }
+
   /** Recharge une conversation passée depuis l'historique (sidebar). */
   async loadConversation(sessionId: string): Promise<void> {
     if (sessionId === this.sessionId) return;

@@ -138,15 +138,16 @@
 
 .history__item {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
+  align-items: flex-start;
+  gap: 6px;
   text-align: left;
-  padding: 10px 10px;
+  padding: 10px 8px 10px 10px;
   border-radius: var(--radius-sm);
   background: transparent;
   border: 1px solid transparent;
   margin-bottom: 2px;
-  transition: background 0.14s ease, border-color 0.14s ease;
+  cursor: pointer;
+  transition: background 0.14s ease, border-color 0.14s ease, opacity 0.14s ease;
 }
 
 .history__item:hover {
@@ -157,6 +158,42 @@
 .history__item.is-active {
   background: var(--glass-strong);
   border-color: rgba(124, 111, 240, 0.35);
+}
+
+.history__item.is-deleting {
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+.history__main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.history__delete {
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 8px;
+  background: transparent;
+  border: none;
+  color: var(--text-faint);
+  opacity: 0;
+  transition: opacity 0.14s ease, color 0.14s ease, background 0.14s ease;
+}
+
+.history__item:hover .history__delete {
+  opacity: 1;
+}
+
+.history__delete:hover {
+  color: var(--error);
+  background: rgba(239, 122, 114, 0.12);
 }
 
 .history__title {

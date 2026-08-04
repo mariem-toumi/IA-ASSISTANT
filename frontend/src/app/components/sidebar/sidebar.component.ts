@@ -18,12 +18,14 @@ export class SidebarComponent implements OnInit, OnChanges {
   @Input() refreshTrigger: unknown; // change de valeur -> recharge la liste
   @Output() newConversation = new EventEmitter<void>();
   @Output() selectConversation = new EventEmitter<string>();
+  @Output() conversationDeleted = new EventEmitter<string>();
 
   conversations: Conversation[] = [];
   searchQuery = '';
   searchResults: Conversation[] | null = null; // null = pas de recherche active
   isSearching = false;
   isLoading = false;
+  deletingId: string | null = null;
 
   private searchDebounce?: ReturnType<typeof setTimeout>;
 
@@ -73,6 +75,25 @@ export class SidebarComponent implements OnInit, OnChanges {
   onNewConversation(): void {
     this.clearSearch();
     this.newConversation.emit();
+  }
+
+  async onDelete(event: Event, sessionId: string, title: string): Promise<void> {
+    event.stopPropagation(); // évite de déclencher onSelect en même temps
+
+    const confirmed = window.confirm(`Supprimer définitivement "${title}" ?`);
+    if (!confirmed) return;
+
+    this.deletingId = sessionId;
+    const success = await this.chat.deleteConversation(sessionId);
+    this.deletingId = null;
+
+    if (success) {
+      this.conversations = this.conversations.filter((c) => c.session_id !== sessionId);
+      if (this.searchResults) {
+        this.searchResults = this.searchResults.filter((c) => c.session_id !== sessionId);
+      }
+      this.conversationDeleted.emit(sessionId);
+    }
   }
 
   get displayedList(): Conversation[] {

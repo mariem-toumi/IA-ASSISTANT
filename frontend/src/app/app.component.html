@@ -6,6 +6,7 @@
     [refreshTrigger]="historyVersion"
     (newConversation)="newConversation()"
     (selectConversation)="loadConversation($event)"
+    (conversationDeleted)="onConversationDeleted($event)"
   ></app-sidebar>
 
   <main class="main">

@@ -53,17 +53,32 @@
       {{ searchResults ? 'Aucune conversation ne correspond.' : 'Aucune conversation pour le moment.' }}
     </div>
 
-    <button
-      type="button"
+    <div
       class="history__item"
       *ngFor="let c of displayedList"
       [class.is-active]="c.session_id === activeSessionId"
+      [class.is-deleting]="deletingId === c.session_id"
       (click)="onSelect(c.session_id)"
     >
-      <span class="history__title">{{ c.title }}</span>
-      <span class="history__snippet" *ngIf="c.snippet">{{ c.snippet }}</span>
-      <span class="history__time">{{ relativeTime(c.updated_at) }}</span>
-    </button>
+      <div class="history__main">
+        <span class="history__title">{{ c.title }}</span>
+        <span class="history__snippet" *ngIf="c.snippet">{{ c.snippet }}</span>
+        <span class="history__time">{{ relativeTime(c.updated_at) }}</span>
+      </div>
+
+      <button
+        type="button"
+        class="history__delete"
+        [disabled]="deletingId === c.session_id"
+        (click)="onDelete($event, c.session_id, c.title)"
+        [attr.aria-label]="'Supprimer ' + c.title"
+        title="Supprimer cette conversation"
+      >
+        <svg viewBox="0 0 16 16" width="13" height="13" fill="none" aria-hidden="true">
+          <path d="M3 5h10M6.5 5V3.5a1 1 0 0 1 1-1h1a1 1 0 0 1 1 1V5M4.5 5l.5 8a1 1 0 0 0 1 1h4a1 1 0 0 0 1-1l.5-8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
+    </div>
   </div>
 
   <div class="spacer"></div>

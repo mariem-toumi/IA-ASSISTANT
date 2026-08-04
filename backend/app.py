@@ -6,6 +6,8 @@ import logging
 import uuid
 from flask import Flask, request, jsonify, Response
 from flask_cors import CORS
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 
 from config import Config
 from agent import run_agent, run_agent_stream
@@ -30,7 +32,15 @@ Config.validate()
 
 # --- App Flask ---
 app = Flask(__name__)
-CORS(app)  # à restreindre en prod (origins spécifiques)
+CORS(app, origins=Config.ALLOWED_ORIGIN)
+
+# --- Protection anti-abus (limite le nombre de requêtes par visiteur) ---
+limiter = Limiter(
+    get_remote_address,
+    app=app,
+    default_limits=[],  # pas de limite globale par défaut, seulement sur les routes coûteuses
+    storage_uri="memory://"
+)
 
 
 @app.route("/", methods=["GET"])
@@ -56,6 +66,7 @@ def health_check():
 
 
 @app.route("/api/chat", methods=["POST"])
+@limiter.limit(Config.RATE_LIMIT_CHAT)
 def chat():
     """
     Endpoint principal du chat (réponse complète, non streamée).
@@ -91,6 +102,7 @@ def chat():
 
 
 @app.route("/api/chat/stream", methods=["POST"])
+@limiter.limit(Config.RATE_LIMIT_CHAT)
 def chat_stream():
     """
     Version streaming (SSE) de l'endpoint chat.
@@ -175,5 +187,14 @@ def delete_conversation(session_id):
     return jsonify({"status": "conversation supprimée", "session_id": session_id}), 200
 
 
+@app.errorhandler(429)
+def rate_limit_exceeded(e):
+    return jsonify({
+        "error": "Trop de requêtes envoyées. Merci de patienter un peu avant de réessayer."
+    }), 429
+
+
 if __name__ == "__main__":
+    # Utilisé uniquement en développement local.
+    # En production, c'est gunicorn qui lance l'app (voir Procfile).
     app.run(debug=Config.DEBUG, port=Config.PORT, use_reloader=False)
