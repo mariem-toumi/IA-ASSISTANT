@@ -20,25 +20,21 @@ from memory import (
     search_conversations,
 )
 
-# --- Setup logging ---
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
 )
 logger = logging.getLogger(__name__)
 
-# --- Validation config au démarrage ---
 Config.validate()
 
-# --- App Flask ---
 app = Flask(__name__)
 CORS(app, origins=Config.ALLOWED_ORIGIN)
 
-# --- Protection anti-abus (limite le nombre de requêtes par visiteur) ---
 limiter = Limiter(
     get_remote_address,
     app=app,
-    default_limits=[],  # pas de limite globale par défaut, seulement sur les routes coûteuses
+    default_limits=[],
     storage_uri="memory://"
 )
 
@@ -68,14 +64,6 @@ def health_check():
 @app.route("/api/chat", methods=["POST"])
 @limiter.limit(Config.RATE_LIMIT_CHAT)
 def chat():
-    """
-    Endpoint principal du chat (réponse complète, non streamée).
-    Body attendu (JSON) :
-    {
-        "message": "Quelle est l'actualité sur X ?",
-        "session_id": "optionnel-uuid"
-    }
-    """
     data = request.get_json(silent=True)
 
     if not data or "message" not in data or not data["message"].strip():
@@ -83,14 +71,15 @@ def chat():
 
     user_message = data["message"].strip()
     session_id = data.get("session_id") or str(uuid.uuid4())
+    visitor_id = data.get("visitor_id")
 
     logger.info(f"[session={session_id}] Question reçue: {user_message}")
 
     history = get_history(session_id)
     result = run_agent(user_message, history)
 
-    append_message(session_id, "user", user_message)
-    append_message(session_id, "assistant", result["response"])
+    append_message(session_id, "user", user_message, visitor_id)
+    append_message(session_id, "assistant", result["response"], visitor_id)
 
     return jsonify({
         "session_id": session_id,
@@ -104,10 +93,6 @@ def chat():
 @app.route("/api/chat/stream", methods=["POST"])
 @limiter.limit(Config.RATE_LIMIT_CHAT)
 def chat_stream():
-    """
-    Version streaming (SSE) de l'endpoint chat.
-    Le frontend doit lire ce flux avec fetch + ReadableStream.
-    """
     data = request.get_json(silent=True)
 
     if not data or "message" not in data or not data["message"].strip():
@@ -115,6 +100,7 @@ def chat_stream():
 
     user_message = data["message"].strip()
     session_id = data.get("session_id") or str(uuid.uuid4())
+    visitor_id = data.get("visitor_id")
 
     logger.info(f"[session={session_id}] [STREAM] Question reçue: {user_message}")
 
@@ -132,8 +118,8 @@ def chat_stream():
             yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
 
         if final_response_text:
-            append_message(session_id, "user", user_message)
-            append_message(session_id, "assistant", final_response_text)
+            append_message(session_id, "user", user_message, visitor_id)
+            append_message(session_id, "assistant", final_response_text, visitor_id)
 
     return Response(
         generate(),
@@ -147,34 +133,35 @@ def chat_stream():
 
 @app.route("/api/session/<session_id>", methods=["DELETE"])
 def reset_session(session_id):
-    clear_session(session_id)
+    visitor_id = request.args.get("visitor_id")
+    clear_session(session_id, visitor_id)
     return jsonify({"status": "session effacée", "session_id": session_id}), 200
 
 
-# --- Historique des conversations ---
+# --- Historique des conversations (scoped par visitor_id) ---
 
 @app.route("/api/conversations", methods=["GET"])
 def get_conversations():
-    """Liste toutes les conversations, les plus récentes en premier."""
-    conversations = list_conversations()
+    visitor_id = request.args.get("visitor_id", "")
+    conversations = list_conversations(visitor_id)
     return jsonify({"conversations": conversations}), 200
 
 
 @app.route("/api/conversations/search", methods=["GET"])
 def search_conversations_route():
-    """Recherche par mot-clé dans les titres et le contenu des messages."""
     query = request.args.get("q", "").strip()
+    visitor_id = request.args.get("visitor_id", "")
     if not query:
         return jsonify({"results": []}), 200
 
-    results = search_conversations(query)
+    results = search_conversations(query, visitor_id)
     return jsonify({"results": results}), 200
 
 
 @app.route("/api/conversations/<session_id>", methods=["GET"])
 def get_conversation(session_id):
-    """Récupère tous les messages d'une conversation donnée."""
-    messages = get_conversation_messages(session_id)
+    visitor_id = request.args.get("visitor_id", "")
+    messages = get_conversation_messages(session_id, visitor_id)
     if not messages:
         return jsonify({"error": "Conversation introuvable."}), 404
 
@@ -183,7 +170,10 @@ def get_conversation(session_id):
 
 @app.route("/api/conversations/<session_id>", methods=["DELETE"])
 def delete_conversation(session_id):
-    clear_session(session_id)
+    visitor_id = request.args.get("visitor_id", "")
+    deleted = clear_session(session_id, visitor_id)
+    if not deleted:
+        return jsonify({"error": "Conversation introuvable ou accès refusé."}), 404
     return jsonify({"status": "conversation supprimée", "session_id": session_id}), 200
 
 
@@ -195,6 +185,4 @@ def rate_limit_exceeded(e):
 
 
 if __name__ == "__main__":
-    # Utilisé uniquement en développement local.
-    # En production, c'est gunicorn qui lance l'app (voir Procfile).
     app.run(debug=Config.DEBUG, port=Config.PORT, use_reloader=False)

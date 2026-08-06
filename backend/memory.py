@@ -2,7 +2,9 @@
 Gestion de la mémoire de conversation, avec persistance SQLite.
 - Historique complet stocké sur disque (survit aux redémarrages du serveur).
 - Fournit le contexte court terme pour l'agent (get_history).
-- Fournit la liste des conversations + une recherche par mot-clé pour le frontend.
+- Chaque conversation est rattachée à un visitor_id (identifiant anonyme
+  généré côté navigateur) pour que chaque visiteur ne voie QUE son propre
+  historique, jamais celui des autres.
 """
 import sqlite3
 import logging
@@ -16,7 +18,7 @@ DB_DIR = Path(__file__).parent / "data"
 DB_DIR.mkdir(exist_ok=True)
 DB_PATH = DB_DIR / "history.db"
 
-MAX_HISTORY_MESSAGES = 20   # nb de messages renvoyés à l'agent pour le contexte court terme
+MAX_HISTORY_MESSAGES = 20
 TITLE_MAX_LENGTH = 60
 
 _lock = threading.Lock()
@@ -34,6 +36,7 @@ def init_db() -> None:
         conn.execute("""
             CREATE TABLE IF NOT EXISTS conversations (
                 session_id TEXT PRIMARY KEY,
+                visitor_id TEXT,
                 title TEXT NOT NULL,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
@@ -49,8 +52,14 @@ def init_db() -> None:
                 FOREIGN KEY (session_id) REFERENCES conversations(session_id)
             )
         """)
+        # Migration douce : ajoute visitor_id si la table existait déjà sans cette colonne
+        existing_cols = [row["name"] for row in conn.execute("PRAGMA table_info(conversations)")]
+        if "visitor_id" not in existing_cols:
+            conn.execute("ALTER TABLE conversations ADD COLUMN visitor_id TEXT")
+
         conn.execute("CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session_id)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_messages_content ON messages(content)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_conversations_visitor ON conversations(visitor_id)")
     logger.info(f"Base de données initialisée: {DB_PATH}")
 
 
@@ -77,7 +86,7 @@ def get_history(session_id: str) -> list:
     return messages[-MAX_HISTORY_MESSAGES:]
 
 
-def append_message(session_id: str, role: str, content: str) -> None:
+def append_message(session_id: str, role: str, content: str, visitor_id: str = None) -> None:
     if not content:
         return
 
@@ -91,8 +100,9 @@ def append_message(session_id: str, role: str, content: str) -> None:
         if existing is None:
             title = _make_title(content) if role == "user" else "Nouvelle conversation"
             conn.execute(
-                "INSERT INTO conversations (session_id, title, created_at, updated_at) VALUES (?, ?, ?, ?)",
-                (session_id, title, now, now)
+                "INSERT INTO conversations (session_id, visitor_id, title, created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (session_id, visitor_id, title, now, now)
             )
         else:
             conn.execute(
@@ -106,33 +116,67 @@ def append_message(session_id: str, role: str, content: str) -> None:
         )
 
 
-def clear_session(session_id: str) -> None:
-    """Supprime définitivement une conversation et ses messages."""
+def clear_session(session_id: str, visitor_id: str = None) -> bool:
+    """
+    Supprime une conversation et ses messages.
+    Si visitor_id est fourni, la suppression n'a lieu que si le visiteur
+    est bien le propriétaire de la conversation (protection anti-suppression
+    par un tiers qui devinerait un session_id).
+    Retourne True si une suppression a bien eu lieu.
+    """
     with _lock, _get_connection() as conn:
+        if visitor_id is not None:
+            owner = conn.execute(
+                "SELECT visitor_id FROM conversations WHERE session_id = ?", (session_id,)
+            ).fetchone()
+            if owner is None or owner["visitor_id"] != visitor_id:
+                return False
+
         conn.execute("DELETE FROM messages WHERE session_id = ?", (session_id,))
-        conn.execute("DELETE FROM conversations WHERE session_id = ?", (session_id,))
-    logger.info(f"Conversation {session_id} supprimée")
+        cursor = conn.execute("DELETE FROM conversations WHERE session_id = ?", (session_id,))
+        deleted = cursor.rowcount > 0
+
+    if deleted:
+        logger.info(f"Conversation {session_id} supprimée")
+    return deleted
 
 
-def list_conversations(limit: int = 50) -> list:
-    """Liste des conversations, les plus récentes en premier."""
+def list_conversations(visitor_id: str, limit: int = 50) -> list:
+    """Liste les conversations d'UN visiteur précis, les plus récentes en premier."""
+    if not visitor_id:
+        return []
+
     with _lock, _get_connection() as conn:
         rows = conn.execute("""
             SELECT c.session_id, c.title, c.created_at, c.updated_at,
                    COUNT(m.id) as message_count
             FROM conversations c
             LEFT JOIN messages m ON m.session_id = c.session_id
+            WHERE c.visitor_id = ?
             GROUP BY c.session_id
             ORDER BY c.updated_at DESC
             LIMIT ?
-        """, (limit,)).fetchall()
+        """, (visitor_id, limit)).fetchall()
 
     return [dict(r) for r in rows]
 
 
-def get_conversation_messages(session_id: str) -> list:
-    """Tous les messages d'une conversation, dans l'ordre chronologique."""
+def get_conversation_messages(session_id: str, visitor_id: str) -> list:
+    """
+    Tous les messages d'une conversation, dans l'ordre chronologique.
+    Ne retourne rien si le visitor_id ne correspond pas au propriétaire
+    (empêche un visiteur de lire l'historique d'un autre en devinant un ID).
+    """
+    if not visitor_id:
+        return []
+
     with _lock, _get_connection() as conn:
+        owner = conn.execute(
+            "SELECT visitor_id FROM conversations WHERE session_id = ?", (session_id,)
+        ).fetchone()
+        if owner is None or owner["visitor_id"] != visitor_id:
+            return []
+
         rows = conn.execute(
             "SELECT role, content, created_at FROM messages WHERE session_id = ? ORDER BY id ASC",
             (session_id,)
@@ -140,13 +184,10 @@ def get_conversation_messages(session_id: str) -> list:
     return [dict(r) for r in rows]
 
 
-def search_conversations(query: str, limit: int = 30) -> list:
-    """
-    Recherche par mot-clé dans les titres ET le contenu des messages.
-    Retourne les conversations correspondantes avec un court extrait.
-    """
+def search_conversations(query: str, visitor_id: str, limit: int = 30) -> list:
+    """Recherche par mot-clé, restreinte aux conversations du visiteur courant."""
     query = query.strip()
-    if not query:
+    if not query or not visitor_id:
         return []
 
     like_pattern = f"%{query}%"
@@ -161,10 +202,10 @@ def search_conversations(query: str, limit: int = 30) -> list:
                 ) as snippet
             FROM conversations c
             LEFT JOIN messages m ON m.session_id = c.session_id
-            WHERE c.title LIKE ? OR m.content LIKE ?
+            WHERE c.visitor_id = ? AND (c.title LIKE ? OR m.content LIKE ?)
             ORDER BY c.updated_at DESC
             LIMIT ?
-        """, (like_pattern, like_pattern, like_pattern, limit)).fetchall()
+        """, (like_pattern, visitor_id, like_pattern, like_pattern, limit)).fetchall()
 
     results = []
     for r in rows:
@@ -180,5 +221,4 @@ def search_conversations(query: str, limit: int = 30) -> list:
     return results
 
 
-# Initialise la base au chargement du module
 init_db()

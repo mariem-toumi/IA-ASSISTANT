@@ -27,6 +27,7 @@ export class AppComponent implements OnInit, AfterViewChecked {
   backendOnline: boolean | null = null;
   isStreaming = false;
   isLoadingConversation = false;
+  sidebarOpen = false; // état du tiroir sur mobile
 
   /** Change de valeur à chaque échange terminé -> la sidebar recharge sa liste. */
   historyVersion = 0;

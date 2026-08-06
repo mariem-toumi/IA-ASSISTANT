@@ -263,8 +263,5 @@
   color: var(--text-faint);
 }
 
-@media (max-width: 880px) {
-  .sidebar {
-    display: none;
-  }
-}
+/* Sur mobile, la visibilité est gérée par .sidebar-shell dans app.component
+   (tiroir coulissant), donc pas de display:none ici. */

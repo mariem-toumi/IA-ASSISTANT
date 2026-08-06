@@ -1,6 +1,7 @@
 import { Injectable } from '@angular/core';
 import { environment } from '../../environments/environment';
 import { Conversation, ConversationMessage, Source } from '../models/message.model';
+import { getVisitorId } from './visitor';
 
 export interface StreamEvent {
   type: 'session' | 'status' | 'sources' | 'token' | 'done' | 'error';
@@ -20,6 +21,9 @@ export interface StreamHandlers {
  * Parle au backend Flask /api/chat/stream (Server-Sent Events).
  * On utilise fetch + ReadableStream plutôt que EventSource natif car
  * EventSource ne permet pas d'envoyer un corps JSON en POST.
+ *
+ * Chaque appel inclut un visitor_id anonyme (généré côté navigateur, voir
+ * visitor.ts) pour que l'historique de chaque visiteur reste privé.
  */
 @Injectable({ providedIn: 'root' })
 export class ChatService {
@@ -29,7 +33,11 @@ export class ChatService {
     const response = await fetch(`${this.baseUrl}/api/chat/stream`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message, session_id: sessionId ?? undefined }),
+      body: JSON.stringify({
+        message,
+        session_id: sessionId ?? undefined,
+        visitor_id: getVisitorId()
+      }),
       signal
     });
 
@@ -48,7 +56,6 @@ export class ChatService {
 
       buffer += decoder.decode(value, { stream: true });
 
-      // Les événements SSE sont séparés par une ligne vide ("\n\n")
       const events = buffer.split('\n\n');
       buffer = events.pop() ?? '';
 
@@ -69,10 +76,10 @@ export class ChatService {
     }
   }
 
-  /** Liste les conversations passées, les plus récentes en premier. */
+  /** Liste LES conversations DE CE visiteur, les plus récentes en premier. */
   async getConversations(): Promise<Conversation[]> {
     try {
-      const res = await fetch(`${this.baseUrl}/api/conversations`);
+      const res = await fetch(`${this.baseUrl}/api/conversations?visitor_id=${encodeURIComponent(getVisitorId())}`);
       if (!res.ok) return [];
       const data = await res.json();
       return data.conversations ?? [];
@@ -81,10 +88,11 @@ export class ChatService {
     }
   }
 
-  /** Recherche par mot-clé dans les titres et le contenu des conversations. */
+  /** Recherche par mot-clé, restreinte aux conversations de ce visiteur. */
   async searchConversations(query: string): Promise<Conversation[]> {
     try {
-      const res = await fetch(`${this.baseUrl}/api/conversations/search?q=${encodeURIComponent(query)}`);
+      const params = new URLSearchParams({ q: query, visitor_id: getVisitorId() });
+      const res = await fetch(`${this.baseUrl}/api/conversations/search?${params.toString()}`);
       if (!res.ok) return [];
       const data = await res.json();
       return data.results ?? [];
@@ -93,10 +101,10 @@ export class ChatService {
     }
   }
 
-  /** Récupère tous les messages d'une conversation pour la recharger dans le fil. */
+  /** Récupère les messages d'une conversation (uniquement si elle appartient à ce visiteur). */
   async getConversationMessages(sessionId: string): Promise<ConversationMessage[]> {
     try {
-      const res = await fetch(`${this.baseUrl}/api/conversations/${sessionId}`);
+      const res = await fetch(`${this.baseUrl}/api/conversations/${sessionId}?visitor_id=${encodeURIComponent(getVisitorId())}`);
       if (!res.ok) return [];
       const data = await res.json();
       return data.messages ?? [];
@@ -105,10 +113,12 @@ export class ChatService {
     }
   }
 
-  /** Supprime définitivement une conversation. */
+  /** Supprime définitivement une conversation (si elle appartient à ce visiteur). */
   async deleteConversation(sessionId: string): Promise<boolean> {
     try {
-      const res = await fetch(`${this.baseUrl}/api/conversations/${sessionId}`, { method: 'DELETE' });
+      const res = await fetch(`${this.baseUrl}/api/conversations/${sessionId}?visitor_id=${encodeURIComponent(getVisitorId())}`, {
+        method: 'DELETE'
+      });
       return res.ok;
     } catch {
       return false;
